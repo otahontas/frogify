@@ -172,8 +172,6 @@ add_plugin(frogify
   SOURCES
     ${source}/PluginEditor.cpp
     ${source}/PluginProcessor.cpp
-    ${source}/LevelDetector.cpp
-    ${source}/Utils.cpp
   INCLUDE_DIRS
         ${source}
 )
