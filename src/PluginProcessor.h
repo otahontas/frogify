@@ -2,6 +2,36 @@
 
 #include <JuceHeader.h>
 
+// This struct holds our stateful waveshaper logic
+struct FrogWaveShaper {
+  float frogginess = 0.0f;
+  void prepare(const juce::dsp::ProcessSpec &) {}
+  void reset() { frogginess = 0.0f; }
+
+  template <typename ProcessContext>
+  void process(const ProcessContext &context) noexcept {
+    auto &inputBlock = context.getInputBlock();
+    auto &outputBlock = context.getOutputBlock();
+    if (context.isBypassed) {
+      outputBlock.copyFrom(inputBlock);
+      return;
+    }
+    for (size_t ch = 0; ch < outputBlock.getNumChannels(); ++ch) {
+      auto *in = inputBlock.getChannelPointer(ch);
+      auto *out = outputBlock.getChannelPointer(ch);
+      for (size_t i = 0; i < outputBlock.getNumSamples(); ++i) {
+        auto distorted = std::tanh(in[i] * (1.0f + frogginess * 4.0f));
+        out[i] = (in[i] * (1.0f - frogginess)) + (distorted * frogginess);
+      }
+    }
+  }
+};
+
+// Use the StateVariableTPTFilter which is safe for real-time parameter changes
+using Filter = juce::dsp::StateVariableTPTFilter<float>;
+// A FormantBand now contains the safe filter and a gain stage for the boost
+using FormantBand = juce::dsp::ProcessorChain<Filter, juce::dsp::Gain<float>>;
+
 namespace Param {
 namespace ID {
 static const juce::String Enabled{"enabled"};
@@ -27,6 +57,7 @@ static constexpr float FroginessMax{100.0f};
 static constexpr float FroginessInc{1.0f};
 static constexpr float FroginessSkw{1.0f};
 } // namespace Ranges
+
 namespace Defaults {
 static constexpr bool ProcessorEnabledDefault{true};
 static constexpr float OutputGainDefault{0.0f};
@@ -68,9 +99,18 @@ public:
 private:
   mrta::ParameterManager parameterManager;
   double currentSampleRate = 0;
+
+  // DSP Objects
+  juce::dsp::Oscillator<float> lfo;
+  juce::dsp::ProcessorChain<FormantBand, FormantBand, FormantBand,
+                            FrogWaveShaper>
+      processorChain;
+
+  // Parameters
   bool processorEnabled = Param::Defaults::ProcessorEnabledDefault;
-  juce::SmoothedValue<float> outputGainSmoother;
-  juce::SmoothedValue<float> froginessSmoother;
+  juce::SmoothedValue<float> frogginessSmoother;
+  juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear>
+      outputGainSmoother;
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DynamicsAudioProcessor)
 };
